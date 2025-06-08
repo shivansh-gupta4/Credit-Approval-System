@@ -1,0 +1,82 @@
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: credit_approval_system
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123456
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    user: "appuser:appgroup"
+    command: >
+      sh -c "cd /app/credit_approval_system &&
+      celery -A credit_approval_system.celery worker --loglevel=info"
+    volumes:      
+      - .:/app
+    environment:
+      - PYTHONPATH=/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  credit_approval_system:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    user: "appuser:appgroup"
+    command: >
+      sh -c "while ! nc -z postgres 5432; do
+        echo 'Waiting for PostgreSQL...'
+        sleep 1
+      done &&
+      while ! nc -z redis 6379; do
+        echo 'Waiting for Redis...'
+        sleep 1
+      done &&
+      cd /app/credit_approval_system &&
+      python manage.py makemigrations credit_system &&
+      python manage.py migrate &&
+      python manage.py shell -c 'from credit_system.tasks import import_customer_data; import_customer_data.delay()' &&
+      python manage.py runserver 0.0.0.0:8000"
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgres://postgres:123456@postgres:5432/credit_approval_system
+      REDIS_URL: redis://redis:6379/0
+      PYTHONPATH: /app
+    volumes:
+      - .:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      celery:
+        condition: service_started
+
+volumes:
+  postgres_data:
