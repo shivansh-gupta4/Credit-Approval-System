@@ -1,6 +1,7 @@
 import math
 from datetime import date
 from credit_system.models import Customer, Loan
+from credit_system.utils.credit_score import calculate_credit_score
 
 def evaluate_eligibility(customer_id, loan_amount, interest_rate, tenure):
     try:
@@ -16,17 +17,18 @@ def evaluate_eligibility(customer_id, loan_amount, interest_rate, tenure):
     )
 
     total_emi = sum(loan.monthly_installment for loan in active_loans)
+    monthly_emi_requested_loan = loan_amount * interest_rate / 12 / 100 * ((1 + interest_rate / 12 / 100) ** tenure) / (((1 + interest_rate / 12 / 100) ** tenure) - 1)
+    total_emi = total_emi + monthly_emi_requested_loan
     if total_emi > 0.5 * customer.monthly_salary:
         return build_response(False, customer_id, loan_amount, interest_rate, tenure, corrected_rate=16, message="EMI exceeds 50% of monthly salary")
 
     total_outstanding = sum(loan.loan_amount for loan in active_loans)
+    total_outstanding = total_outstanding + loan_amount
     if total_outstanding > customer.approved_limit:
         return build_response(False, customer_id, loan_amount, interest_rate, tenure, corrected_rate=16, message="Outstanding loan amount exceeds approved limit")
 
-    past_loans = Loan.objects.filter(customer=customer)
-    total_emis = sum(loan.tenure for loan in past_loans)
-    paid_emis = sum(loan.emis_paid_on_time for loan in past_loans)
-    credit_score = (paid_emis / total_emis) * 100 if total_emis > 0 else 0
+    credit_score_data = calculate_credit_score(customer)
+    credit_score = credit_score_data['score']
 
     if credit_score > 50:
         threshold = interest_rate
