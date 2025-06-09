@@ -99,6 +99,6 @@ The following environment variables can be configured in the `docker-compose.yml
 4. Push to the branch
 5. Create a Pull Request
 
-## License
+## Product Video: 
 
-[Add your license information here] 
+https://drive.google.com/file/d/1uY0T6g3C9F-xCJgyOnr9MVVOMnfN3eqk/view?usp=sharing
